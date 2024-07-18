@@ -1,6 +1,7 @@
 import {
 	type AssociationAddress,
 	AssociationCC,
+	type AssociationCheckResult,
 	type AssociationGroup,
 	ECDHProfiles,
 	FLiRS2WakeUpTime,
@@ -32,6 +33,7 @@ import {
 } from "@zwave-js/cc";
 import { type IndicatorObject } from "@zwave-js/cc/IndicatorCC";
 import {
+	BasicDeviceClass,
 	CommandClasses,
 	ControllerStatus,
 	EMPTY_ROUTE,
@@ -41,6 +43,7 @@ import {
 	type MaybeNotKnown,
 	type MaybeUnknown,
 	NODE_ID_BROADCAST,
+	NODE_ID_BROADCAST_LR,
 	NOT_KNOWN,
 	NodeIDType,
 	NodeType,
@@ -389,7 +392,7 @@ interface ControllerEventCallbacks
 {
 	"inclusion failed": () => void;
 	"exclusion failed": () => void;
-	"inclusion started": (secure: boolean, strategy: InclusionStrategy) => void;
+	"inclusion started": (strategy: InclusionStrategy) => void;
 	"exclusion started": () => void;
 	"inclusion stopped": () => void;
 	"exclusion stopped": () => void;
@@ -813,6 +816,18 @@ export class ZWaveController
 	public getBroadcastNode(): VirtualNode {
 		return new VirtualNode(
 			NODE_ID_BROADCAST,
+			this.driver,
+			this.nodes.values(),
+		);
+	}
+
+	/**
+	 * Returns a reference to the (virtual) broadcast node for Z-Wave Long Range, which allows sending commands to all LR nodes.
+	 * This automatically groups nodes by security class, ignores nodes that cannot be controlled via multicast/broadcast, and will fall back to multicast(s) if necessary.
+	 */
+	public getBroadcastNodeLR(): VirtualNode {
+		return new VirtualNode(
+			NODE_ID_BROADCAST_LR,
 			this.driver,
 			this.nodes.values(),
 		);
@@ -2037,12 +2052,7 @@ export class ZWaveController
 				`The controller is now ready to add nodes`,
 			);
 
-			this.emit(
-				"inclusion started",
-				// TODO: Remove first parameter in next major version
-				options.strategy !== InclusionStrategy.Insecure,
-				options.strategy,
-			);
+			this.emit("inclusion started", options.strategy);
 		} catch (e) {
 			this.setInclusionState(InclusionState.Idle);
 			if (
@@ -2111,12 +2121,7 @@ export class ZWaveController
 				}),
 			);
 
-			this.emit(
-				"inclusion started",
-				// TODO: Remove first parameter in next major version
-				true,
-				InclusionStrategy.SmartStart,
-			);
+			this.emit("inclusion started", InclusionStrategy.SmartStart);
 		} catch (e) {
 			this.setInclusionState(InclusionState.Idle);
 			// Error handling for this happens at the call site
@@ -2637,7 +2642,6 @@ export class ZWaveController
 			this.setInclusionState(InclusionState.Busy);
 
 			const deviceClass = new DeviceClass(
-				this.driver.configManager,
 				nodeInfo.basicDeviceClass,
 				nodeInfo.genericDeviceClass,
 				nodeInfo.specificDeviceClass,
@@ -2662,11 +2666,20 @@ export class ZWaveController
 			});
 
 			this.driver.controllerLog.print(
-				`Node ${newNode.id} was included by another controller:
-basic device class:    ${newNode.deviceClass?.basic.label}
-generic device class:  ${newNode.deviceClass?.generic.label}
-specific device class: ${newNode.deviceClass?.specific.label}
-supported CCs: ${
+				`Node ${newNode.id} was included by another controller:${
+					newNode.deviceClass
+						? `
+  basic device class:    ${
+							getEnumMemberName(
+								BasicDeviceClass,
+								newNode.deviceClass.basic,
+							)
+						}
+  generic device class:  ${newNode.deviceClass.generic.label}
+  specific device class: ${newNode.deviceClass.specific.label}`
+						: ""
+				}
+  supported CCs: ${
 					nodeInfo.supportedCCs
 						.map((cc) =>
 							`\n  · ${CommandClasses[cc]} (${num2hex(cc)})`
@@ -2885,7 +2898,6 @@ supported CCs: ${
 				// TODO: Check if this stuff works for a normal replace too
 				// eslint-disable-next-line @typescript-eslint/dot-notation
 				newNode["deviceClass"] = new DeviceClass(
-					this.driver.configManager,
 					requestedNodeInfo.basicDeviceClass,
 					requestedNodeInfo.genericDeviceClass,
 					requestedNodeInfo.specificDeviceClass,
@@ -3823,7 +3835,6 @@ supported CCs: ${
 					msg.statusContext!.nodeId,
 					this.driver,
 					new DeviceClass(
-						this.driver.configManager,
 						msg.statusContext!.basicDeviceClass!,
 						msg.statusContext!.genericDeviceClass!,
 						msg.statusContext!.specificDeviceClass!,
@@ -3863,10 +3874,13 @@ supported CCs: ${
 					this.setInclusionState(InclusionState.Idle);
 					this._nodePendingInclusion = undefined;
 					return true;
-				} else if (nodeId === NODE_ID_BROADCAST) {
+				} else if (
+					nodeId === NODE_ID_BROADCAST
+					|| nodeId === NODE_ID_BROADCAST_LR
+				) {
 					// No idea how this can happen but it dit at least once
 					this.driver.controllerLog.print(
-						`Cannot add a node with the Node ID ${NODE_ID_BROADCAST}, aborting...`,
+						`Cannot add a node with the broadcast node ID, aborting...`,
 						"warn",
 					);
 					this.setInclusionState(InclusionState.Idle);
@@ -3909,10 +3923,19 @@ supported CCs: ${
 				});
 
 				this.driver.controllerLog.print(
-					`finished adding node ${newNode.id}:
-  basic device class:    ${newNode.deviceClass?.basic.label}
-  generic device class:  ${newNode.deviceClass?.generic.label}
-  specific device class: ${newNode.deviceClass?.specific.label}
+					`finished adding node ${newNode.id}:${
+						newNode.deviceClass
+							? `
+  basic device class:    ${
+								getEnumMemberName(
+									BasicDeviceClass,
+									newNode.deviceClass.basic,
+								)
+							}
+  generic device class:  ${newNode.deviceClass.generic.label}
+  specific device class: ${newNode.deviceClass.specific.label}`
+							: ""
+					}
   supported CCs: ${
 						supportedCCs
 							.map((cc) =>
@@ -4157,13 +4180,7 @@ supported CCs: ${
 				this.driver.controllerLog.print(
 					`The failed node is ready to be replaced, inclusion started...`,
 				);
-				this.emit(
-					"inclusion started",
-					// TODO: Remove first parameter in next major version
-					this._inclusionOptions.strategy
-						!== InclusionStrategy.Insecure,
-					this._inclusionOptions.strategy,
-				);
+				this.emit("inclusion started", this._inclusionOptions.strategy);
 				this.setInclusionState(InclusionState.Including);
 				this._replaceFailedPromise?.resolve(true);
 
@@ -5845,15 +5862,15 @@ ${associatedNodes.join(", ")}`,
 	/**
 	 * Checks if a given association is allowed.
 	 */
-	public isAssociationAllowed(
+	public checkAssociation(
 		source: AssociationAddress,
 		group: number,
 		destination: AssociationAddress,
-	): boolean {
+	): AssociationCheckResult {
 		const node = this.nodes.getOrThrow(source.nodeId);
 		const endpoint = node.getEndpointOrThrow(source.endpoint ?? 0);
 
-		return ccUtils.isAssociationAllowed(
+		return ccUtils.checkAssociation(
 			this.driver,
 			endpoint,
 			group,
@@ -5862,7 +5879,22 @@ ${associatedNodes.join(", ")}`,
 	}
 
 	/**
-	 * Adds associations to a node or endpoint
+	 * Adds associations to a node or endpoint.
+	 *
+	 * **Note:** This method will throw if:
+	 * * the source node, endpoint or association group does not exist,
+	 * * the source node is a ZWLR node and the destination is not the SIS
+	 * * the destination node is a ZWLR node
+	 * * the association is not allowed for other reasons. In this case, the error's
+	 * `context` property will contain an array with all forbidden destinations, each with an added `checkResult` property
+	 * which contains the reason why the association is forbidden:
+	 *     ```ts
+	 *     {
+	 *         checkResult: AssociationCheckResult;
+	 *         nodeId: number;
+	 *         endpoint?: number | undefined;
+	 *     }[]
+	 *     ```
 	 */
 	public async addAssociations(
 		source: AssociationAddress,
@@ -6604,12 +6636,21 @@ ${associatedNodes.join(", ")}`,
 	}
 
 	/**
-	 * Returns the known list of neighbors for a node
+	 * Returns the known list of neighbors for a node.
+	 *
+	 * Throws when the node is a Long Range node.
 	 */
 	public async getNodeNeighbors(
 		nodeId: number,
 		onlyRepeaters: boolean = false,
 	): Promise<readonly number[]> {
+		if (isLongRangeNodeId(nodeId)) {
+			throw new ZWaveError(
+				`Cannot request node neighbors for Long Range node ${nodeId}`,
+				ZWaveErrorCodes.Controller_NotSupportedForLongRange,
+			);
+		}
+
 		this.driver.controllerLog.logNode(nodeId, {
 			message: "requesting node neighbors...",
 			direction: "outbound",

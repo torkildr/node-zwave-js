@@ -20,7 +20,6 @@ import {
 import { staticExtends } from "@zwave-js/shared/safe";
 import { distinct } from "alcalzone-shared/arrays";
 import type { Driver } from "../driver/Driver";
-import type { Endpoint } from "./Endpoint";
 import { createMultiCCAPIWrapper } from "./MultiCCAPIWrapper";
 import { VirtualNode } from "./VirtualNode";
 
@@ -101,12 +100,14 @@ export class VirtualEndpoint implements IVirtualEndpoint {
 				&& endpoint.node.physicalNodes.length > 1
 			) {
 				// The API for S2 needs to know the multicast group ID
+				const secMan = this.driver.getSecurityManager2(
+					endpoint.node.physicalNodes[0].id,
+				);
 				return CCAPI.create(ccId, this.driver, endpoint).withOptions({
-					s2MulticastGroupId: this.driver.securityManager2
-						?.createMulticastGroup(
-							endpoint.node.physicalNodes.map((n) => n.id),
-							secClass,
-						),
+					s2MulticastGroupId: secMan?.createMulticastGroup(
+						endpoint.node.physicalNodes.map((n) => n.id),
+						secClass,
+					),
 				});
 			} else {
 				return CCAPI.create(ccId, this.driver, endpoint);
@@ -184,7 +185,7 @@ export class VirtualEndpoint implements IVirtualEndpoint {
 		const allCCs = distinct(
 			this._node.physicalNodes
 				.map((n) => n.getEndpoint(this.index))
-				.filter((e): e is Endpoint => !!e)
+				.filter((e) => !!e)
 				.flatMap((e) => [...e.implementedCommandClasses.keys()]),
 		);
 		for (const cc of allCCs) {

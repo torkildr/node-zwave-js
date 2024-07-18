@@ -21,7 +21,11 @@ import {
 	validatePayload,
 } from "@zwave-js/core";
 import { type MaybeNotKnown } from "@zwave-js/core/safe";
-import type { ZWaveApplicationHost, ZWaveHost } from "@zwave-js/host/safe";
+import type {
+	ZWaveApplicationHost,
+	ZWaveHost,
+	ZWaveValueHost,
+} from "@zwave-js/host/safe";
 import { buffer2hex, num2hex, pick } from "@zwave-js/shared/safe";
 import { wait } from "alcalzone-shared/async";
 import { randomBytes } from "node:crypto";
@@ -377,10 +381,30 @@ export class SecurityCC extends CommandClass {
 
 		// Remember which commands are supported securely
 		for (const cc of supportedCCs) {
-			endpoint.addCC(cc, { isSupported: true, secure: true });
+			// Basic CC has special rules for when it is considered supported
+			// Therefore we mark all other CCs as supported, but not Basic CC,
+			// for which support is determined later.
+			if (cc === CommandClasses.Basic) {
+				endpoint.addCC(cc, { secure: true });
+			} else {
+				endpoint.addCC(cc, {
+					isSupported: true,
+					secure: true,
+				});
+			}
 		}
 		for (const cc of controlledCCs) {
-			endpoint.addCC(cc, { isControlled: true, secure: true });
+			// Basic CC has special rules for when it is considered supported
+			// Therefore we mark all other CCs as supported, but not Basic CC,
+			// for which support is determined later.
+			if (cc === CommandClasses.Basic) {
+				endpoint.addCC(cc, { secure: true });
+			} else {
+				endpoint.addCC(cc, {
+					isControlled: true,
+					secure: true,
+				});
+			}
 		}
 
 		// We know for sure that the node is included securely
@@ -491,9 +515,9 @@ export class SecurityCCNonceReport extends SecurityCC {
 		return super.serialize();
 	}
 
-	public toLogEntry(applHost: ZWaveApplicationHost): MessageOrCCLogEntry {
+	public toLogEntry(host?: ZWaveValueHost): MessageOrCCLogEntry {
 		return {
-			...super.toLogEntry(applHost),
+			...super.toLogEntry(host),
 			message: { nonce: buffer2hex(this.nonce) },
 		};
 	}
@@ -707,7 +731,7 @@ export class SecurityCCCommandEncapsulation extends SecurityCC {
 		return super.computeEncapsulationOverhead() + 18;
 	}
 
-	public toLogEntry(applHost: ZWaveApplicationHost): MessageOrCCLogEntry {
+	public toLogEntry(host?: ZWaveValueHost): MessageOrCCLogEntry {
 		const message: MessageRecord = {};
 		if (this.nonceId != undefined) {
 			message["nonce id"] = this.nonceId;
@@ -724,7 +748,7 @@ export class SecurityCCCommandEncapsulation extends SecurityCC {
 			}
 		}
 		return {
-			...super.toLogEntry(applHost),
+			...super.toLogEntry(host),
 			message,
 		};
 	}
@@ -765,9 +789,9 @@ export class SecurityCCSchemeGet extends SecurityCC {
 		return super.serialize();
 	}
 
-	public toLogEntry(applHost: ZWaveApplicationHost): MessageOrCCLogEntry {
+	public toLogEntry(host?: ZWaveValueHost): MessageOrCCLogEntry {
 		return {
-			...super.toLogEntry(applHost),
+			...super.toLogEntry(host),
 			// Hide the default payload line
 			message: undefined,
 		};
@@ -791,9 +815,9 @@ export class SecurityCCSchemeInherit extends SecurityCC {
 		return super.serialize();
 	}
 
-	public toLogEntry(applHost: ZWaveApplicationHost): MessageOrCCLogEntry {
+	public toLogEntry(host?: ZWaveValueHost): MessageOrCCLogEntry {
 		return {
-			...super.toLogEntry(applHost),
+			...super.toLogEntry(host),
 			// Hide the default payload line
 			message: undefined,
 		};
@@ -912,9 +936,9 @@ export class SecurityCCCommandsSupportedReport extends SecurityCC {
 			.reduce((prev, cur) => prev.concat(...cur), []);
 	}
 
-	public toLogEntry(applHost: ZWaveApplicationHost): MessageOrCCLogEntry {
+	public toLogEntry(host?: ZWaveValueHost): MessageOrCCLogEntry {
 		return {
-			...super.toLogEntry(applHost),
+			...super.toLogEntry(host),
 			message: {
 				reportsToFollow: this.reportsToFollow,
 				supportedCCs: this.supportedCCs

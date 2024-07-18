@@ -595,17 +595,6 @@ export class Driver extends TypedEventEmitter<DriverEventCallbacks>
 			cloneDeep(defaultOptions),
 		) as ZWaveOptions;
 
-		// Normalize deprecated options
-		// TODO: Remove test in packages/zwave-js/src/lib/test/driver/sendDataMissingCallbackAbort.test.ts
-		// when the deprecated option is removed
-		if (
-			// eslint-disable-next-line deprecation/deprecation
-			this._options.enableSoftReset === false
-			&& this._options.features.softReset
-		) {
-			this._options.features.softReset = false;
-		}
-
 		// And make sure they contain valid values
 		checkOptions(this._options);
 		if (this._options.userAgent) {
@@ -1369,10 +1358,8 @@ export class Driver extends TypedEventEmitter<DriverEventCallbacks>
 		);
 		this._networkCache = new JsonlDB(networkCacheFile, {
 			...options,
-			serializer: (key, value) =>
-				serializeNetworkCacheValue(this, key, value),
-			reviver: (key, value) =>
-				deserializeNetworkCacheValue(this, key, value),
+			serializer: serializeNetworkCacheValue,
+			reviver: deserializeNetworkCacheValue,
 		});
 		await this._networkCache.open();
 
@@ -1431,7 +1418,6 @@ export class Driver extends TypedEventEmitter<DriverEventCallbacks>
 
 			try {
 				await migrateLegacyNetworkCache(
-					this,
 					this.controller.homeId,
 					this._networkCache,
 					this._valueDB,
@@ -2671,7 +2657,7 @@ export class Driver extends TypedEventEmitter<DriverEventCallbacks>
 		if (!this._enteringBootloader) {
 			// Start the watchdog again, unless disabled
 			if (this.options.features.watchdog) {
-				await this._controller?.startWatchdog();
+				void this._controller?.startWatchdog();
 			}
 
 			// If desired, re-configure the controller to use 16 bit node IDs
@@ -3756,6 +3742,8 @@ export class Driver extends TypedEventEmitter<DriverEventCallbacks>
 			const messagePart1 =
 				"The node is causing the controller to become unresponsive";
 
+			let handled: boolean;
+
 			if (node.canSleep) {
 				if (node.status === NodeStatus.Asleep) {
 					// We already moved the messages to the wakeup queue before. If we end up here, this means a command
@@ -3770,15 +3758,13 @@ export class Driver extends TypedEventEmitter<DriverEventCallbacks>
 
 				// There is no longer a reference to the current transaction. If it should be moved to the wakeup queue,
 				// it temporarily needs to be added to the queue again.
-				const handled = this.mayMoveToWakeupQueue(transaction);
+				handled = this.mayMoveToWakeupQueue(transaction);
 				if (handled) {
 					this.queue.add(transaction);
 				}
 
 				// Mark the node as asleep. This will move the messages to the wakeup queue
 				node.markAsAsleep();
-
-				return handled;
 			} else {
 				const errorMsg = `${messagePart1}, it is presumed dead`;
 				this.controllerLog.logNode(node.id, errorMsg, "warn");
@@ -3794,8 +3780,30 @@ export class Driver extends TypedEventEmitter<DriverEventCallbacks>
 				transaction.abort(error);
 				this.rejectAllTransactionsForNode(node.id, errorMsg);
 
-				return true;
+				handled = true;
 			}
+
+			// If the controller is still timing out, reset it once more
+			if (
+				this._recoveryPhase
+					=== ControllerRecoveryPhase.CallbackTimeoutAfterReset
+			) {
+				this.driverLog.print(
+					"Attempting to recover controller again...",
+					"warn",
+				);
+				void this.softReset().catch(() => {
+					this.driverLog.print(
+						"Automatic controller recovery failed. Returning to normal operation and hoping for the best.",
+						"warn",
+					);
+				}).finally(() => {
+					this._recoveryPhase = ControllerRecoveryPhase.None;
+					this._controller?.setStatus(ControllerStatus.Ready);
+				});
+			}
+
+			return handled;
 		} else if (this._controller.status !== ControllerStatus.Unresponsive) {
 			// The controller was responsive before this transaction failed.
 

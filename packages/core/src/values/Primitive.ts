@@ -182,11 +182,16 @@ export function getIntegerLimits(
 	return (IntegerLimits as any)[`${signed ? "" : "U"}Int${size * 8}`];
 }
 
-export function getFloatParameters(value: number): {
+export interface FloatParameters {
 	precision: number;
 	size: number;
+}
+
+export interface FloatParametersWithValue extends FloatParameters {
 	roundedValue: number;
-} {
+}
+
+export function getFloatParameters(value: number): FloatParametersWithValue {
 	const precision = Math.min(getPrecision(value), 7);
 	value = Math.round(value * Math.pow(10, precision));
 	const size: number | undefined = getMinIntegerSize(value, true);
@@ -257,6 +262,8 @@ export function encodeBitMask(
 	maxValue: number = Math.max(...values),
 	startValue: number = 1,
 ): Buffer {
+	if (!Number.isFinite(maxValue)) return Buffer.from([0]);
+
 	const numBytes = Math.ceil((maxValue - startValue + 1) / 8);
 	const ret = Buffer.alloc(numBytes, 0);
 	for (let val = startValue; val <= maxValue; val++) {

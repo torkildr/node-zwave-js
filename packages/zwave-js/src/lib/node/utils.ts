@@ -311,16 +311,23 @@ export function getDefinedValueIDsInternal(
 	node: IZWaveNode,
 	includeInternal: boolean = false,
 ): TranslatedValueID[] {
+	// The controller has no values. Even if some ended up in the cache somehow, do not return any.
+	if (applHost.isControllerNode(node.id)) return [];
+
 	let ret: ValueID[] = [];
 	const allowControlled: CommandClasses[] = [
-		CommandClasses.Basic,
 		CommandClasses["Scene Activation"],
 	];
 	for (const endpoint of getAllEndpoints(applHost, node)) {
 		for (const cc of allCCs) {
 			if (
+				// Create values only for supported CCs
 				endpoint.supportsCC(cc)
+				// ...and some controlled CCs
 				|| (endpoint.controlsCC(cc) && allowControlled.includes(cc))
+				// ...and possibly Basic CC, which has some extra checks to know
+				// whether values should be exposed
+				|| cc === CommandClasses.Basic
 			) {
 				const ccInstance = CommandClass.createInstanceUnchecked(
 					applHost,

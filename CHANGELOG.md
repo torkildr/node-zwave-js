@@ -4,6 +4,103 @@
 <!--
 	Add placeholder for next release with `wip` snippet
 -->
+## 13.0.0 (2024-07-17)
+### Application compatibility
+Home Assistant users who manage `zwave-js-server` themselves, **must** install the following upgrades before upgrading to this driver version:
+* Home Assistant **TBD** or higher
+* `zwave-js-server` **1.37.0**
+
+### Breaking changes · [Migration guide](https://zwave-js.github.io/node-zwave-js/#/getting-started/migrating-to-v13)
+* Align Meter CC Reset v6 with specifications, add mocks, add API for report commands (#6921)
+* Convert all Z-Wave specific configs except devices and manufacturers into code, move from ConfigManager methods to utility functions (#6925, #6929, #7023)
+* Remove `ZWaveApplicationHost` dependency from `CommandClass.toLogEntry()` (#6927)
+* Removed some deprecated things (#6928)
+* Replace `Controller.isAssociationAllowed` with `Controller.checkAssociation` (#6935)
+* Fixed health checks for ZWLR nodes, throw when requesting neighbors (#6939)
+* The repo now uses Yarn 4 and Corepack to manage its dependencies (#6949)
+* "Master Code" was renamed to "Admin Code" (#6995)
+
+### Features
+* `mock-server` now supports communication with endpoints (#7005)
+
+### Bugfixes
+* Reset aborted flags when starting link reliability or route health check (#7022)
+
+### Config file changes
+* Update Zooz ZEN30 to latest revisions (#6630)
+* Support MCO Home MH-S412 parameters properly (#6623)
+* Add Ring Flood Freeze Sensor (#6970)
+* Override user code count for Yale ZW2 locks to expose admin code (#6528)
+* Add GDZW7-ECO Ecolink 700 Series Garage Door Controller (#6572)
+* Correct label for Remote 3-Way Switch parameter on Zooz ZEN32 (#6871)
+* Add UltraPro 700 Series Z-Wave In-Wall Smart Dimmer (#6904)
+* Add Yale Assure 2 Biometric Deadbolt locks (#6972)
+* Add iDevices In-Wall Smart Dimmer (#5521)
+* Support Comet parameters properly (#6583)
+* Update label of Nortek GD00Z-6, -7, -8 (#6991)
+* Disable Supervision for Zooz ZSE11 (#6990)
+* Clarify parameters and units for Everspring AN158 (#6364)
+* Force-add support for Multilevel Switch CC to FGRM-222, remove Binary Switch CC (#6986)
+* Add ZVIDAR Z-PI 800 Series PI Module (#7018)
+
+### Changes under the hood
+* Upgrade to TypeScript 5.5 (#6919)
+* The root `tsconfig.json` is now set up in "solution-style", which should improve the goto references functionality. In addition, linting, testing and running locally no longer requires all modules to be compiled first. (#6748)
+* Fixed some minor issues found by code scanning (#6992)
+* Fixed an issue where `yarn codefind` was loading no source files (#6993)
+* Fixed an issue where `import(...)` types with absolute paths could appear in in CC docs (#6996)
+
+## 12.13.0 (2024-07-16)
+This release adds a feature similar to PC Controller's ERTT that allow sending a series of commands to a node, collecting statistics along the way.
+Note that for now this is considered **unstable** and can change at any time without notice.
+
+### Features
+* Add link reliability check feature (#7020)
+
+## 12.12.5 (2024-07-15)
+### Bugfixes
+* Supported CCs of endpoints are now reset during a re-interview (#7008)
+* Basic CC is no longer automatically marked as supported if included in the list of securely supported commands (#7010)
+* Set highest version also for Basic CC if Version CC is not supported (#7012)
+
+## 12.12.4 (2024-07-11)
+### Bugfixes
+* Fixed an issue where CC values could be returned for the controller node (#7002)
+* Fixed a regression from v12.12.3 would result in Basic CC values being exposed unnecessarily for some devices (#7001)
+
+## 12.12.3 (2024-07-09)
+### Bugfixes
+* Fixed an issue where `Basic CC` values would be exposed unnecessarily for devices with a compat flag that maps `Basic CC Set` to a different CC (#6984)
+
+## 12.12.2 (2024-07-05)
+### Bugfixes
+* When responding to `Version CC Get` queries, Z-Wave JS's own version is now included as the `Firmware 1` version (#6982)
+* When receiving a notification with an unknown notification type, the created "unknown" value now correctly has metadata set (#6981)
+* When receiving an idle notification, the values for unknown notification events are now also reset to idle (#6980)
+* Auto-enable all supported Barrier Operator signaling subsystem during the interview (#6979)
+
+## 12.12.1 (2024-06-26)
+### Bugfixes
+* Fixed an issue where the watchdog feature could cause Z-Wave JS to stall after attempting controller recovery (#6968)
+* Reset controller again when transmitting to a problematic node makes the controller become unresponsive again after automatic recovery (#6968)
+* Node interviews are now aborted in more cases when node is determined to be dead (#6967)
+* Expose Basic CC `currentValue` when certain compat flags are set (#6964)
+
+## 12.12.0 (2024-06-24)
+We were informed by Silicon Labs that 700/800 series controllers have a hardware watchdog that can reset the controller when it becomes unresponsive. This feature is now enabled by default in Z-Wave JS and should prevent the controller from hanging indefinitely.
+
+In case this causes new issues, the feature can be disabled by setting the environment variable `ZWAVEJS_DISABLE_WATCHDOG` to any non-empty value, or by setting the driver option `features.watchdog` to `false`.
+
+Please let us know if this actually helps or not.
+
+### Features
+* Enable hardware watchdog on 700/800 series controllers (#6954)
+* Add method to query supported RF regions (#6957)
+* Add notification variable for Door/Window tilt state (#6958)
+
+### Bugfixes
+* Fixed an issue where value metadata for unknown notification events with known notification types would only be created if the CC version was exactly 2 (#6959)
+
 ## 12.11.2 (2024-06-22)
 ### Bugfixes
 * Fixed a regression from 12.11.1 causing commands to sleeping nodes to block the send queue (#6953)

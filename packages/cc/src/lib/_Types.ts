@@ -1,9 +1,11 @@
-import type { Scale } from "@zwave-js/config/safe";
 import {
 	type CommandClasses,
 	type DataRate,
 	type FLiRS,
 	type MaybeNotKnown,
+	type MaybeUnknown,
+	type MeterScale,
+	type Scale,
 	type ValueMetadata,
 	ZWaveDataRate,
 } from "@zwave-js/core/safe";
@@ -40,6 +42,22 @@ export enum AssociationCommand {
 	SupportedGroupingsReport = 0x06,
 	SpecificGroupGet = 0x0b,
 	SpecificGroupReport = 0x0c,
+}
+
+export enum AssociationCheckResult {
+	OK = 0x01,
+	/** The association is forbidden, because the destination is a ZWLR node. ZWLR does not support direct communication between end devices. */
+	Forbidden_DestinationIsLongRange,
+	/** The association is forbidden, because the source is a ZWLR node. ZWLR does not support direct communication between end devices. */
+	Forbidden_SourceIsLongRange,
+	/** The association is forbidden, because a node cannot be associated with itself. */
+	Forbidden_SelfAssociation,
+	/** The association is forbidden, because the source node's CC versions require the source and destination node to have the same (highest) security class. */
+	Forbidden_SecurityClassMismatch,
+	/** The association is forbidden, because the source node's CC versions require the source node to have the key for the destination node's highest security class. */
+	Forbidden_DestinationSecurityClassNotGranted,
+	/** The association is forbidden, because none of the CCs the source node sends are supported by the destination. */
+	Forbidden_NoSupportedCCs,
 }
 
 export enum AssociationGroupInfoCommand {
@@ -644,7 +662,7 @@ export enum DoorLockLoggingEventType {
 	UserCodeAdded = 0x17,
 	UserCodeDeleted = 0x18,
 	AllUserCodesDeleted = 0x19,
-	MasterCodeChanged = 0x1a,
+	AdminCodeChanged = 0x1a,
 	UserCodeChanged = 0x1b,
 	LockReset = 0x1c,
 	ConfigurationChanged = 0x1d,
@@ -995,6 +1013,15 @@ export type MeterMetadata = ValueMetadata & {
 		scale?: number;
 	};
 };
+
+export interface MeterReading {
+	rateType: RateType;
+	value: number;
+	previousValue: MaybeNotKnown<number>;
+	deltaTime: MaybeUnknown<number>;
+	type: number;
+	scale: MeterScale;
+}
 
 export enum MultiChannelAssociationCommand {
 	Set = 0x01,
@@ -1518,9 +1545,9 @@ export enum UserCodeCommand {
 	ExtendedUserCodeSet = 0x0b,
 	ExtendedUserCodeGet = 0x0c,
 	ExtendedUserCodeReport = 0x0d,
-	MasterCodeSet = 0x0e,
-	MasterCodeGet = 0x0f,
-	MasterCodeReport = 0x10,
+	AdminCodeSet = 0x0e,
+	AdminCodeGet = 0x0f,
+	AdminCodeReport = 0x10,
 	UserCodeChecksumGet = 0x11,
 	UserCodeChecksumReport = 0x12,
 }

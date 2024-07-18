@@ -696,7 +696,7 @@ getAllAssociations(nodeId: number): ReadonlyObjectKeyMap<
 	ReadonlyMap<number, readonly AssociationAddress[]>
 >;
 
-isAssociationAllowed(source: AssociationAddress, group: number, destination: AssociationAddress): boolean;
+checkAssociation(source: AssociationAddress, group: number, destination: AssociationAddress): AssociationCheckResult;
 
 addAssociations(source: AssociationAddress, group: number, destinations: AssociationAddress[]): Promise<void>;
 
@@ -708,7 +708,7 @@ removeNodeFromAllAssociations(nodeId: number): Promise<void>;
 - `getAllAssociationGroups` returns all association groups of a given **node and all its endpoints**. The returned `Map` uses the endpoint index as keys and its values are `Map`s of group IDs to their definition
 - `getAssociations` returns all defined associations of a given node **or** endpoint. If no endpoint is given, the associations for the root endpoint (`0`) are returned.
 - `getAllAssociations` returns all defined associations of a given **node and all its endpoints**. The returned `Map` uses the source node+endpoint as keys and its values are `Map`s of association group IDs to target node+endpoint.
-- `addAssociations` can be used to add one or more associations to a node's or endpoint's group. You should check if each association is allowed using `isAssociationAllowed` before doing so.
+- `addAssociations` can be used to add one or more associations to a node's or endpoint's group. You should check if each association is allowed using `checkAssociation` before doing so.
 - To remove a previously added association, use `removeAssociations`
 - A node can be removed from all other nodes' associations using `removeNodeFromAllAssociations`
 
@@ -752,6 +752,30 @@ If the target endpoint is not given, the association is a "node association". If
 
 A target endpoint of `0` (i.e. the root endpoint), the association targets the node itself and acts like a node association for the target node. However, you should note that some devices don't like having a root endpoint association as the lifeline and must be configured with a node association.
 
+#### `AssociationCheckResult` enum
+
+This tells you whether an association is allowed, and if not, why:
+
+<!-- #import AssociationCheckResult from "zwave-js" -->
+
+```ts
+enum AssociationCheckResult {
+	OK = 1,
+	/** The association is forbidden, because the destination is a ZWLR node. ZWLR does not support direct communication between end devices. */
+	Forbidden_DestinationIsLongRange = 2,
+	/** The association is forbidden, because the source is a ZWLR node. ZWLR does not support direct communication between end devices. */
+	Forbidden_SourceIsLongRange = 3,
+	/** The association is forbidden, because a node cannot be associated with itself. */
+	Forbidden_SelfAssociation = 4,
+	/** The association is forbidden, because the source node's CC versions require the source and destination node to have the same (highest) security class. */
+	Forbidden_SecurityClassMismatch = 5,
+	/** The association is forbidden, because the source node's CC versions require the source node to have the key for the destination node's highest security class. */
+	Forbidden_DestinationSecurityClassNotGranted = 6,
+	/** The association is forbidden, because none of the CCs the source node sends are supported by the destination. */
+	Forbidden_NoSupportedCCs = 7,
+}
+```
+
 ### Controlling multiple nodes at once (multicast / broadcast)
 
 When controlling multiple nodes, a "waterfall" effect can often be observed, because nodes get the commands after another. This can be avoided by using multicast or broadcast, which sends commands to multiple/all nodes at once.
@@ -784,10 +808,19 @@ Creates a virtual node that can be used to send commands to multiple supporting 
 getBroadcastNode(): VirtualNode
 ```
 
-Returns a reference to the (virtual) broadcast node. This can be used to send a command to all nodes in the network with a single command. You can target individual endpoints as usual.
+Returns a reference to the (virtual) Z-Wave Classic broadcast node. This can be used to send a command to all Z-Wave Classic nodes in the network with a single command. You can target individual endpoints as usual.
 
 > [!NOTE]
-> When the network contains devices with mixed security classes, this will do the same as `getMulticastGroup` instead and send multiple commands.
+> When the network contains Z-Wave Classic devices with mixed security classes, this will do the same as `getMulticastGroup` instead and send multiple commands.
+
+```ts
+getBroadcastNodeLR(): VirtualNode
+```
+
+Returns a reference to the (virtual) Z-Wave LR broadcast node. This can be used to send a command to all Z-Wave LR nodes in the network with a single command. You can target individual endpoints as usual.
+
+> [!NOTE]
+> When the network contains Z-Wave LR devices with mixed security classes, this will do the same as `getMulticastGroup` instead and send multiple commands.
 
 ### Configuring the Z-Wave radio
 
@@ -1369,10 +1402,10 @@ The `Controller` class inherits from the Node.js [EventEmitter](https://nodejs.o
 
 ### `"inclusion started"`
 
-The process to include a node into the network was started successfully. The event handler takes a parameter which tells you whether the inclusion should be secure or not:
+The process to include a node into the network was started successfully. The event handler has a parameter which indicates which inclusion strategy is used to include the node, and which can also be used to determine whether the inclusion is supposed to be secure.
 
 ```ts
-(secure: boolean) => void
+(strategy: InclusionStrategy) => void
 ```
 
 > [!NOTE]
